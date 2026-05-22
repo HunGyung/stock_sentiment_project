@@ -1,0 +1,25 @@
+# 1. 파이썬 실행 시 자동 생성되는 임시/캐시 파일 제외
+__pycache__/
+*py[cod]
+
+# 2. 파이썬 가상환경 제외 (용량이 크고 다른 컴퓨터에서 새로 설치하면 됨)
+stock_sentiment/
+.stock_sentiment/
+
+# 3. VS Code나 IntelliJ 같은 편집기 설정 폴더 제외
+.vscode/
+.idea/
+
+# 4. 보안이 중요한 API 키 보관 파일 제외 (추후 작성 예정)
+.env
+
+# 5. AI 모델이나 대용량 데이터 저장 폴더 제외
+data/
+.cache/
+.huggingface/
+
+# AI 에이전트 임시 폴더 제외
+.antigravitycli/
+
+# AI 에이전트 사용을 위한 프로젝트 전반에 대한 프롬프트
+prompt.md
