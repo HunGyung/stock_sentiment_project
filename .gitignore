@@ -3,8 +3,8 @@ __pycache__/
 *py[cod]
 
 # 2. 파이썬 가상환경 제외 (용량이 크고 다른 컴퓨터에서 새로 설치하면 됨)
-stock_sentiment/
-.stock_sentiment/
+venv/
+.venv/
 
 # 3. VS Code나 IntelliJ 같은 편집기 설정 폴더 제외
 .vscode/
