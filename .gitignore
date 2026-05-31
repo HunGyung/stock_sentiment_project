@@ -21,5 +21,7 @@ data/
 # AI 에이전트 임시 폴더 제외
 .antigravitycli/
 
-# AI 에이전트 사용을 위한 프로젝트 전반에 대한 프롬프트
+# AI 에이전트 사용을 위한 프로젝트 전반에 대한 프롬프트 및 가이드
 prompt.md
+AGENTS.md
+ANTIGRAVITY.md
