@@ -8,8 +8,10 @@ sentencepiece
 protobuf
 beautifulsoup4>=4.12.0
 httpx>=0.24.0
-faiss-cpu>=1.7.4
 pandas>=2.0.0
 google-generativeai>=0.3.0
 google-genai
+finance-datareader
+chromadb
+sentence-transformers
 

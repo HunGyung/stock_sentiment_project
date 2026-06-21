@@ -1,8 +1,10 @@
 import sys
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import streamlit as st
 import httpx
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Add project root to python path for modular import compatibility
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -10,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # ── 상수 설정 ──────────────────────────────────────────────────────────────────
 API_URL = "http://127.0.0.1:8000/api/analyze"
 HEALTH_CHECK_URL = "http://127.0.0.1:8000/api/health"
+TIMESERIES_URL = "http://127.0.0.1:8000/api/timeseries"
 
 # ── UI 스타일링 헬퍼 ───────────────────────────────────────────────────────────
 def get_sentiment_badge(score: float) -> str:
@@ -55,6 +58,138 @@ def fetch_analysis_data(stock_name: str, limit: int) -> Dict[str, Any]:
         response = client.get(API_URL, params=params)
         response.raise_for_status()
         return response.json()
+
+
+def render_timeseries_chart(
+    time_series: List[Dict[str, Any]],
+    stock_name: str,
+) -> None:
+    """
+    Plotly 이중 Y축 차트를 Streamlit에 렌더링합니다.
+
+    좌측 Y축: 주가 종가 (선 그래프)
+    우측 Y축: 일별 평균 감성 점수 (바 차트)
+
+    Args:
+        time_series: [{"date", "price", "sentiment_score"}, ...] 형태의 시계열 데이터
+        stock_name: 차트 타이틀에 표시할 종목명
+    """
+    if not time_series:
+        st.warning(
+            "📊 시계열 차트를 그리기 위한 데이터가 부족합니다. "
+            "종목이 매핑 테이블에 없거나 주가 데이터를 불러오지 못했을 수 있습니다."
+        )
+        return
+
+    # 날짜, 주가, 감성 점수 분리
+    dates: List[str] = [pt["date"] for pt in time_series]
+    prices: List[Optional[float]] = [pt.get("price") for pt in time_series]
+    sentiments: List[Optional[float]] = [pt.get("sentiment_score") for pt in time_series]
+
+    # 감성 점수 색상 매핑 (긍정=녹색, 부정=빨강, 중립=회색, 데이터없음=연회색)
+    bar_colors: List[str] = []
+    for s in sentiments:
+        if s is None:
+            bar_colors.append("rgba(200, 200, 200, 0.4)")
+        elif s > 0:
+            bar_colors.append("rgba(46, 213, 115, 0.75)")
+        elif s < 0:
+            bar_colors.append("rgba(231, 76, 60, 0.75)")
+        else:
+            bar_colors.append("rgba(149, 165, 166, 0.6)")
+
+    # 이중 Y축 서브플롯 생성
+    fig = make_subplots(
+        specs=[[{"secondary_y": True}]],
+    )
+
+    # ── Y1축: 주가 선 그래프 ──────────────────────────────────────────────────────
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=prices,
+            name="종가 (KRW)",
+            mode="lines+markers",
+            line=dict(color="#3498db", width=2.5),
+            marker=dict(size=7, color="#2980b9", symbol="circle"),
+            hovertemplate="%{x}<br>종가: ₩%{y:,.0f}<extra></extra>",
+        ),
+        secondary_y=False,
+    )
+
+    # ── Y2축: 감성 점수 바 차트 ──────────────────────────────────────────────────
+    fig.add_trace(
+        go.Bar(
+            x=dates,
+            y=sentiments,
+            name="일별 평균 감성",
+            marker_color=bar_colors,
+            marker_line_width=0,
+            opacity=0.85,
+            hovertemplate=(
+                "%{x}<br>"
+                "감성 점수: %{y:.2f}<br>"
+                "(긍정=+1.0 / 중립=0.0 / 부정=-1.0)"
+                "<extra></extra>"
+            ),
+        ),
+        secondary_y=True,
+    )
+
+    # 기준선(y=0) 추가 — 감성 축
+    fig.add_hline(
+        y=0,
+        secondary_y=True,
+        line_dash="dot",
+        line_color="rgba(127, 140, 141, 0.5)",
+        line_width=1,
+    )
+
+    # ── 레이아웃 설정 ───────────────────────────────────────────────────────────
+    fig.update_layout(
+        title=dict(
+            text=f"📈 {stock_name} — 최근 7 거래일 주가 &amp; 뉴스 감성 추이",
+            font=dict(size=17, color="#2c3e50"),
+            x=0.01,
+        ),
+        plot_bgcolor="#f8f9fa",
+        paper_bgcolor="#ffffff",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=12),
+        ),
+        hovermode="x unified",
+        margin=dict(l=60, r=60, t=80, b=50),
+        xaxis=dict(
+            title="날짜",
+            tickangle=-30,
+            gridcolor="#e9ecef",
+            showline=True,
+            linecolor="#dee2e6",
+        ),
+    )
+
+    # Y축 레이블 설정
+    fig.update_yaxes(
+        title_text="주가 종가 (KRW)",
+        secondary_y=False,
+        gridcolor="#e9ecef",
+        tickformat=",.0f",
+        tickprefix="₩",
+    )
+    fig.update_yaxes(
+        title_text="일별 평균 감성 점수",
+        secondary_y=True,
+        range=[-1.5, 1.5],
+        gridcolor="rgba(0,0,0,0)",  # 이중 축 눈금선 겹침 방지
+        zeroline=False,
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
 
 # ── 메인 UI 그리기 ──────────────────────────────────────────────────────────────
@@ -136,7 +271,14 @@ def main() -> None:
 
                 st.markdown("---")
 
-                # 6. 메인 화면 - 뉴스 세부 리스트 출력
+                # 6-1. 메인 화면 - 주가-감성 시계열 차트 출력
+                st.subheader("📈 주가-감성 시계열 차트 (최근 7 거래일)")
+                time_series: List[Dict[str, Any]] = data.get("time_series", [])
+                render_timeseries_chart(time_series, stock_name.strip())
+
+                st.markdown("---")
+
+                # 6-2. 메인 화면 - 뉴스 세부 리스트 출력
                 st.subheader("📰 뉴스 세부 분석 피드")
                 if not news_list:
                     st.info("수집된 상세 뉴스 기사가 없습니다.")
