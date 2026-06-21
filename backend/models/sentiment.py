@@ -9,23 +9,34 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from backend.core.preprocessor import clean_news_text
 
 class KoELECTRASentimentAnalyzer:
-    def __init__(self, model_dir: str = "data/model_save"):
+    def __init__(self, model_dir: str = None):
         """
         loads the trained KoELECTRA Sentiment analysis model and its tokenizer
         """
-        # setting execution device (GPU if available, CPU otherwise)
+        # 실행 디바이스 자동 감지 (GPU/CPU)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"[{self.__class__.__name__}] Using device: {self.device}")
-        
-        # loads trained weights
+
+        # ── [핵심 개선] 실행 디렉토리와 관계없이 절대 경로 계산 ────────────────────
+        # __file__: backend/models/sentiment.py
+        # current_dir: .../backend/models/
+        # project_root: .../stock_sentiment_project/
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+
+        if model_dir is None:
+            model_dir = os.path.join(project_root, "data", "model_save")
+        # ──────────────────────────────────────────────────────────────────────────
+
+        # 학습 가중치 로드
         if os.path.exists(model_dir):
             print(f"[{self.__class__.__name__}] Loading fine-tuned model from '{model_dir}'")
             self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
             self.model = AutoModelForSequenceClassification.from_pretrained(model_dir)
         else:
-            # Fallback for the case where the training folder does not exist (Load default pre-trained model - untrained state)
+            # 절대 경로로도 못 찾았을 경우의 폴백
             print(f"[{self.__class__.__name__}] [WARNING] Fine-tuned model not found at '{model_dir}'. Loading base model.")
-            default_model = "monologg/koelectra-small-v3-discriminator"
+            default_model = "monologg/koelectra-base-v3-discriminator"
             self.tokenizer = AutoTokenizer.from_pretrained(default_model)
             self.model = AutoModelForSequenceClassification.from_pretrained(default_model, num_labels=3)
             
@@ -82,7 +93,12 @@ if __name__ == "__main__":
     test_sentences = [
         "삼성전자, 역대급 실적 발표에 주가 급등 상한가 기록!",
         "오늘 주식 시장은 별다른 소식 없이 보합세로 마감했습니다.",
-        "글로벌 경기 침체 우려로 인해 외국인들이 주식을 대거 매도하며 주가가 급락했습니다."
+        "글로벌 경기 침체 우려로 인해 외국인들이 주식을 대거 매도하며 주가가 급락했습니다.",
+        "영화관株 '코로나 빙하기' 언제 끝나나…\"CJ CGV 올 4000억 손실 날수도\"",
+        "현대제철, 지난해 영업익 3,313억원···전년比 67.7% 감소",
+        "부품 공급 차질에…기아차 광주공장 전면 가동 중단",
+        "C쇼크에 멈춘 흑자비행…대한항공 1분기 영업적자 566억",
+        "'1000억대 횡령·배임' 최신원 회장 구속… SK네트웍스 \"경영 공백 방지 최선\""
     ]
     
     print("\n--- 추론 테스트 시작 ---")
