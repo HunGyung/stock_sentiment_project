@@ -94,7 +94,19 @@ $env:GEMINI_API_KEY="your_api_key_here"
 export GEMINI_API_KEY="your_api_key_here"
 ```
 
-### 3. 서버 및 대시보드 구동
+### 3. Docker Compose를 이용한 원클릭 구동 (권장)
+로컬 호스트 환경에 Python 및 의존성 패키지를 직접 설치하지 않고, Docker 컨테이너 기술을 사용하여 백엔드와 프론트엔드를 동시에 가동할 수 있습니다. (Docker Desktop 실행 필수)
+```powershell
+# 1. 호스트 PC에서 Gemini API 키 환경변수 주입 (PowerShell 기준)
+$env:GEMINI_API_KEY="your_api_key_here"
+
+# 2. 도커 컴포즈 빌드 및 통합 구동
+docker-compose up --build
+```
+- 프론트엔드 대시보드 (Streamlit): `http://localhost:8501`
+- 백엔드 API 및 Swagger 문서: `http://localhost:8000/docs`
+
+### 4. 수동으로 서버 및 대시보드 구동
 데이터 분석 파이프라인 작동을 위해 백엔드 API와 프론트엔드를 각각 다른 터미널 세션에서 띄워줍니다.
 
 #### FastAPI 백엔드 서버 기동 (Port: 8000)
