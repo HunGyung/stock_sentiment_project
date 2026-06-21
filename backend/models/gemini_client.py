@@ -89,14 +89,23 @@ def _classify_sentiment(avg_score: float) -> str:
 def _build_prompt(
     stock_name: str,
     news_list: list[dict[str, Any]],
+    retrieved_positives: list[str] | None = None,
+    retrieved_negatives: list[str] | None = None,
 ) -> str:
     """
     Gemini에 전송할 프롬프트를 구성합니다.
+
+    RAG로 검색된 호재·악재 문맥이 제공될 경우 프롬프트 내 전용 섹션에 동적으로 삽입하여
+    Gemini가 구체적인 근거에 기반한 보고서를 생성하도록 유도합니다.
 
     Args:
         stock_name: 분석 대상 종목명 (예: "삼성전자")
         news_list:  뉴스 딕셔너리 리스트.
                     각 항목은 title, summary, sentiment_score, publisher, date 키를 포함.
+        retrieved_positives: RAG 유사도 검색으로 추출한 호재 관련 뉴스 텍스트 조각 리스트.
+                             None 또는 빈 리스트이면 대체 문구를 삽입합니다.
+        retrieved_negatives: RAG 유사도 검색으로 추출한 악재 관련 뉴스 텍스트 조각 리스트.
+                             None 또는 빈 리스트이면 대체 문구를 삽입합니다.
 
     Returns:
         완성된 프롬프트 문자열
@@ -131,8 +140,20 @@ def _build_prompt(
 
     news_section = "\n\n".join(news_blocks)
 
+    # ── RAG 문맥 섹션 빌드 ──────────────────────────────────────────────────────
+    if retrieved_positives:
+        pos_context_section = "\n".join([f"- {ctx.strip()}" for ctx in retrieved_positives])
+    else:
+        pos_context_section = "- 수집된 뉴스에서 뚜렷한 상승 호재 맥락이 검색되지 않았습니다."
+
+    if retrieved_negatives:
+        neg_context_section = "\n".join([f"- {ctx.strip()}" for ctx in retrieved_negatives])
+    else:
+        neg_context_section = "- 수집된 뉴스에서 뚜렷한 하락 리스크 맥락이 검색되지 않았습니다."
+    # ────────────────────────────────────────────────────────────────────────────
+
     prompt = f"""당신은 대한민국 주식 시장 전문 애널리스트입니다.
-아래 제공된 뉴스 감성 분석 데이터를 바탕으로, 투자자를 위한 객관적이고 전문적인 마크다운 보고서를 작성해 주세요.
+아래 제공된 뉴스 데이터 및 RAG 의미 검색 상세 문맥을 바탕으로, 객관적이고 깊이 있는 투자 분석 보고서를 마크다운으로 작성해 주세요.
 
 === 분석 대상 ===
 종목명       : {stock_name}
@@ -140,30 +161,41 @@ def _build_prompt(
 평균 감성 점수 : {avg_score:.3f} / 1.000  ({sentiment_label})
   - 긍정 뉴스: {positive_count}건 / 중립 뉴스: {neutral_count}건 / 부정 뉴스: {negative_count}건
 
-=== 뉴스 상세 ===
+=== [핵심 근거] RAG 호재/상승 요인 문맥 ===
+{pos_context_section}
+
+=== [핵심 근거] RAG 악재/리스크 요인 문맥 ===
+{neg_context_section}
+
+=== 뉴스 요약 목록 ===
 {news_section}
 
 === 보고서 작성 지침 ===
 반드시 아래 마크다운 구조를 정확히 따르세요. 각 섹션은 빠짐없이 작성해야 합니다.
+핵심 위주로 가독성 있게 서술하고, 불필요한 미사여구와 반복 표현은 배제해 주세요.
+위의 'RAG 호재/상승 요인 문맥'과 'RAG 악재/리스크 요인 문맥'을 Momentum 및 Risk 섹션의
+핵심 근거로 반드시 활용하여 구체적으로 서술하세요.
 
 # [{stock_name}] AI 기반 뉴스 감성 & 투자 분석 보고서
 
 ## [감성 분석 종합]
-- 수집된 뉴스의 평균 감성 점수와 전체적인 긍/부정 성향을 분석하여 서술하세요.
-- 긍정/중립/부정 뉴스 비율을 언급하고 시장 분위기를 2~3문장으로 요약하세요.
+- 수집된 뉴스의 평균 감성 점수와 긍/부정 성향을 분석하여 서술하세요. (3문장 이내 요약)
+- 긍정/중립/부정 뉴스 비율을 언급하고 시장 분위기를 간결하게 마무리하세요.
 
 ## [핵심 호재 - Momentum]
-- 상승 요인이 될 수 있는 뉴스 내용을 글머리 기호(-)로 3~5개 항목으로 정리하세요.
+- RAG 호재 문맥과 긍정 뉴스를 근거로, 상승 요인을 핵심 위주로 정리하세요.
+- 글머리 기호(-)로 3~5개 항목, 항목별 최대 2문장으로 작성하세요.
 - 근거가 없으면 "분석된 호재 없음"으로 명시하세요.
 
 ## [핵심 악재 - Risk]
-- 하락 위험 요인이 될 수 있는 뉴스 내용을 글머리 기호(-)로 3~5개 항목으로 정리하세요.
+- RAG 악재 문맥과 부정 뉴스를 근거로, 하락 리스크를 핵심 위주로 정리하세요.
+- 글머리 기호(-)로 3~5개 항목, 항목별 최대 2문장으로 작성하세요.
 - 근거가 없으면 "분석된 악재 없음"으로 명시하세요.
 
 ## [종합 투자 가이드]
-- **단기 관점**: 1~4주 내 투자 전략을 간결하게 제시하세요.
-- **중장기 관점**: 1~6개월 투자 전략을 간결하게 제시하세요.
-- **주의사항**: 본 보고서는 AI 분석 결과이며 실제 투자 판단은 투자자 본인에게 있음을 명시하세요.
+- **단기 관점**: 1~4주 내 투자 전략을 간결하게 제시하세요. (2문장 이내)
+- **중장기 관점**: 1~6개월 투자 전략을 간결하게 제시하세요. (2문장 이내)
+- **주의사항**: 본 보고서는 AI 기술을 활용한 참고 자료일 뿐이며, 모든 투자 판단에 대한 최종 결정과 책임은 투자자 본인에게 있다는 면책 조항 문장을 정확히 작성하세요.
 
 위 구조와 지침을 엄수하여 보고서를 한국어로 작성해 주세요.
 """
@@ -174,19 +206,24 @@ def _build_prompt(
 async def generate_report_async(
     stock_name: str,
     news_list: list[dict[str, Any]],
+    rag_service: Any = None,
     model_name: str = _DEFAULT_MODEL,
 ) -> str:
     """
     Gemini API를 이용하여 주식 투자 분석 보고서를 비동기적으로 생성합니다.
 
+    rag_service가 제공되면 보고서 생성 전 호재/악재 쿼리로 ChromaDB에서
+    의미 기반 Top-3 문맥을 검색하고, _build_prompt에 동적으로 주입합니다.
+
     Args:
         stock_name: 분석 대상 종목명 (예: "삼성전자")
         news_list:  뉴스 정보 딕셔너리 리스트. 각 항목은 다음 키를 포함해야 합니다:
-                    - title (str)           : 기사 제목
-                    - summary (str)         : KoBART 요약문
+                    - title (str)            : 기사 제목
+                    - summary (str)          : KoBART 요약문
                     - sentiment_score (float): 감성 스코어 (0.0 ~ 1.0)
-                    - publisher (str)        : 언론사명
-                    - date (str)            : 날짜 문자열
+                    - publisher (str)         : 언론사명
+                    - date (str)             : 날짜 문자열
+        rag_service: StockRAGService 인스턴스 (선택). None이면 RAG 없이 기존 방식으로 생성.
         model_name: 사용할 Gemini 모델명 (기본값: "gemini-1.5-flash")
 
     Returns:
@@ -200,21 +237,79 @@ async def generate_report_async(
     api_key = _load_api_key()
 
     try:
-        # gemini-1.5-flash 모델이 v1beta API 버전에서 지원 중단/404 발생하는 문제 방지를 위해 gemini-2.5-flash로 자동 매핑
+        # gemini-1.5-flash → gemini-2.5-flash 자동 매핑 (v1beta 지원 중단 대응)
         if model_name == "gemini-1.5-flash":
             logger.info("모델 'gemini-1.5-flash'는 지원하지 않으므로 'gemini-2.5-flash'로 자동 매핑하여 진행합니다.")
             model_name = "gemini-2.5-flash"
 
         logger.info(
-            "Gemini 보고서 생성 시작 | 종목: %s | 모델: %s | 뉴스 수: %d건",
+            "Gemini 보고서 생성 시작 | 종목: %s | 모델: %s | 뉴스 수: %d건 | RAG: %s",
             stock_name, model_name, len(news_list),
+            "ON" if rag_service is not None else "OFF",
         )
+
+        # ── RAG 의미 검색 실행 ─────────────────────────────────────────────────
+        # ChromaDB의 동기 API를 run_in_executor로 이벤트 루프 블로킹 없이 실행합니다.
+        # 호재/악재 두 쿼리를 병렬로 실행하여 지연을 최소화합니다.
+        retrieved_pos: list[str] = []
+        retrieved_neg: list[str] = []
+
+        if rag_service is not None:
+            try:
+                loop = asyncio.get_event_loop()
+
+                # 호재·악재 쿼리를 동시에 병렬 실행
+                pos_future = loop.run_in_executor(
+                    None,
+                    lambda: rag_service.retrieve_contexts(
+                        "최근 실적 개선, HBM 공급 확대, 기술력 확보 등 핵심 호재 및 긍정적 모멘텀 요인",
+                        stock_name,
+                        top_k=3,
+                    ),
+                )
+                neg_future = loop.run_in_executor(
+                    None,
+                    lambda: rag_service.retrieve_contexts(
+                        "대외 경제 불안, 원가 상승, 적자 지속, 소송 또는 규제, 파업 등 핵심 악재 및 리스크 요인",
+                        stock_name,
+                        top_k=3,
+                    ),
+                )
+
+                retrieved_pos, retrieved_neg = await asyncio.gather(
+                    pos_future, neg_future, return_exceptions=True
+                )
+
+                # gather 반환값이 예외 객체일 경우 빈 리스트로 대체
+                if isinstance(retrieved_pos, Exception):
+                    logger.error("RAG 호재 검색 실패: %s", retrieved_pos)
+                    retrieved_pos = []
+                if isinstance(retrieved_neg, Exception):
+                    logger.error("RAG 악재 검색 실패: %s", retrieved_neg)
+                    retrieved_neg = []
+
+                logger.info(
+                    "RAG 검색 완료 | 호재 %d건, 악재 %d건",
+                    len(retrieved_pos), len(retrieved_neg),
+                )
+
+            except Exception as rag_exc:
+                logger.error(
+                    "RAG 컨텍스트 검색 중 예외 발생 (보고서 생성 계속): %s",
+                    rag_exc, exc_info=True,
+                )
+        # ────────────────────────────────────────────────────────────────────────
 
         # google-genai SDK 클라이언트 초기화
         client = genai.Client(api_key=api_key)
 
-        # 프롬프트 구성
-        prompt = _build_prompt(stock_name, news_list)
+        # RAG 문맥을 포함한 프롬프트 구성
+        prompt = _build_prompt(
+            stock_name,
+            news_list,
+            retrieved_positives=retrieved_pos or None,
+            retrieved_negatives=retrieved_neg or None,
+        )
 
         # 동기 API 호출을 비동기 루프에서 실행 (이벤트 루프 블로킹 방지)
         loop = asyncio.get_event_loop()
@@ -224,8 +319,8 @@ async def generate_report_async(
                 model=model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    temperature=0.4,          # 분석 보고서 특성상 낮은 창의성 유지
-                    max_output_tokens=2048,
+                    temperature=0.4,
+                    max_output_tokens=4096,
                 ),
             ),
         )
