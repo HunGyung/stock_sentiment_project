@@ -1,0 +1,24 @@
+services:
+  # 백엔드 컨테이너 설정
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}  # 호스트(내 PC)의 환경변수를 그대로 도커로 주입
+    volumes:
+      - ./data:/app/data                  # 학습 모델 및 ChromaDB 보존을 위해 볼륨 공유
+
+  # 프론트엔드 컨테이너 설정
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_URL=http://backend:8000   # 💡 중요: 도커 내부 가상 네트워크로 백엔드 주소 연결
+    depends_on:
+      - backend                           # 백엔드가 먼저 켜진 후 프론트엔드 기동

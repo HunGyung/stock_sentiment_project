@@ -10,9 +10,12 @@ from plotly.subplots import make_subplots
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ── 상수 설정 ──────────────────────────────────────────────────────────────────
-API_URL = "http://127.0.0.1:8000/api/analyze"
-HEALTH_CHECK_URL = "http://127.0.0.1:8000/api/health"
-TIMESERIES_URL = "http://127.0.0.1:8000/api/timeseries"
+# 환경변수 BACKEND_URL이 설정되어 있으면 그걸 쓰고, 없으면 로컬 호스트(127.0.0.1:8000)를 기본값으로 사용합니다.
+BACKEND_BASE_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+
+API_URL = f"{BACKEND_BASE_URL}/api/analyze"
+HEALTH_CHECK_URL = f"{BACKEND_BASE_URL}/api/health"
+TIMESERIES_URL = f"{BACKEND_BASE_URL}/api/timeseries"
 
 # ── UI 스타일링 헬퍼 ───────────────────────────────────────────────────────────
 def get_sentiment_badge(score: float) -> str:
